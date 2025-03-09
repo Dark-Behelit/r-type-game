@@ -1,0 +1,556 @@
+class Resources {
+    static async load() {
+        const statusElement = document.getElementById('resourceStatus');
+        try {
+            statusElement.textContent = 'Cargando imágenes...';
+            
+            this.images = {};
+            this.sounds = {};
+
+            // Cargar imágenes desde archivos
+            const imagesToLoad = {
+                player: 'assets/images/player-ship.png',
+                enemy1: 'assets/images/enemy1.png',
+                enemy2: 'assets/images/enemy2.png',
+                enemy3: 'assets/images/enemy3.png'
+            };
+
+            // Generar fondo espacial
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Fondo espacial
+            canvas.width = 3200;
+            canvas.height = 600;
+            
+            // Función para crear capa de estrellas
+            const createStarLayer = (numStars, size, alpha, color) => {
+                const layerCanvas = document.createElement('canvas');
+                layerCanvas.width = canvas.width;
+                layerCanvas.height = canvas.height;
+                const layerCtx = layerCanvas.getContext('2d');
+                
+                layerCtx.fillStyle = '#000033';
+                layerCtx.fillRect(0, 0, layerCanvas.width, layerCanvas.height);
+                
+                for (let i = 0; i < numStars; i++) {
+                    layerCtx.fillStyle = `rgba(${color}, ${color}, ${color}, ${alpha})`;
+                    layerCtx.fillRect(
+                        Math.random() * layerCanvas.width,
+                        Math.random() * layerCanvas.height,
+                        size,
+                        size
+                    );
+                }
+                
+                return layerCanvas;
+            };
+            
+            // Crear las dos capas de estrellas
+            const backgroundLayer = createStarLayer(600, 1, 0.5, 200);
+            const foregroundLayer = createStarLayer(200, 2, 0.8, 255);
+            
+            // Guardar las capas del fondo
+            this.images.backgroundLayer = new Image();
+            this.images.backgroundLayer.src = backgroundLayer.toDataURL();
+            this.images.foregroundLayer = new Image();
+            this.images.foregroundLayer.src = foregroundLayer.toDataURL();
+
+            // Cargar las imágenes de las naves
+            const loadImage = (key, src) => {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        this.images[key] = img;
+                        resolve();
+                    };
+                    img.onerror = () => reject(new Error(`Error cargando imagen: ${src}`));
+                    img.src = src;
+                });
+            };
+
+            // Cargar todas las imágenes
+            await Promise.all(
+                Object.entries(imagesToLoad).map(([key, src]) => loadImage(key, src))
+            );
+
+            // Generar disparo
+            canvas.width = 20;
+            canvas.height = 8;
+            ctx.fillStyle = '#ffff00';
+            ctx.beginPath();
+            ctx.moveTo(0, 4);
+            ctx.lineTo(15, 0);
+            ctx.lineTo(20, 4);
+            ctx.lineTo(15, 8);
+            ctx.closePath();
+            ctx.fill();
+            this.images.bullet = new Image();
+            this.images.bullet.src = canvas.toDataURL();
+
+            // Explosión
+            canvas.width = 40;
+            canvas.height = 40;
+            const gradient = ctx.createRadialGradient(20, 20, 0, 20, 20, 20);
+            gradient.addColorStop(0, '#ffff00');
+            gradient.addColorStop(0.5, '#ff4400');
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 40, 40);
+            this.images.explosion = new Image();
+            this.images.explosion.src = canvas.toDataURL();
+
+            // Esperar a que todas las imágenes se carguen
+            await Promise.all(Object.values(this.images).map(img => {
+                if (img instanceof Image && !img.complete) {
+                    return new Promise((resolve) => {
+                        img.onload = resolve;
+                    });
+                }
+                return Promise.resolve();
+            }));
+
+            statusElement.textContent = 'Generando sonidos...';
+
+            // Generar sonidos
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Función para generar sonidos
+            const generateSound = async (options) => {
+                const offlineContext = new OfflineAudioContext(
+                    1,
+                    audioContext.sampleRate * options.duration,
+                    audioContext.sampleRate
+                );
+
+                const oscillator = offlineContext.createOscillator();
+                const gainNode = offlineContext.createGain();
+
+                oscillator.type = options.type;
+                oscillator.frequency.setValueAtTime(options.frequency, 0);
+
+                if (options.slide) {
+                    oscillator.frequency.exponentialRampToValueAtTime(
+                        options.slideFrequency,
+                        options.duration
+                    );
+                }
+
+                gainNode.gain.setValueAtTime(0.3, 0);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, options.duration);
+
+                if (options.noise) {
+                    const noiseBuffer = offlineContext.createBuffer(
+                        1, offlineContext.sampleRate * options.duration, offlineContext.sampleRate
+                    );
+                    const data = noiseBuffer.getChannelData(0);
+                    for (let i = 0; i < data.length; i++) {
+                        data[i] = Math.random() * 2 - 1;
+                    }
+                    const noise = offlineContext.createBufferSource();
+                    noise.buffer = noiseBuffer;
+                    noise.connect(gainNode);
+                    noise.start();
+                }
+
+                oscillator.connect(gainNode);
+                gainNode.connect(offlineContext.destination);
+
+                oscillator.start();
+                oscillator.stop(options.duration);
+
+                return await offlineContext.startRendering();
+            };
+
+            // Generar cada sonido
+            this.sounds.shoot = await generateSound({
+                type: 'square',
+                frequency: 880,
+                duration: 0.1,
+                slide: true,
+                slideFrequency: 440
+            });
+
+            this.sounds.explosion = await generateSound({
+                type: 'sawtooth',
+                frequency: 100,
+                duration: 0.3,
+                noise: true
+            });
+
+            this.sounds.gameOver = await generateSound({
+                type: 'sine',
+                frequency: 440,
+                duration: 1,
+                slide: true,
+                slideFrequency: 220
+            });
+
+            // Generar música de fondo
+            const musicDuration = 30;
+            const musicContext = new OfflineAudioContext(
+                2,
+                audioContext.sampleRate * musicDuration,
+                audioContext.sampleRate
+            );
+
+            const frequencies = [220, 165, 196, 147];
+            const noteLength = 0.25;
+
+            const musicOsc = musicContext.createOscillator();
+            const musicGain = musicContext.createGain();
+            
+            musicOsc.type = 'square';
+            musicOsc.connect(musicGain);
+            
+            let time = 0;
+            while (time < musicDuration) {
+                frequencies.forEach((freq, index) => {
+                    musicOsc.frequency.setValueAtTime(freq, time + index * noteLength);
+                    musicGain.gain.setValueAtTime(0.3, time + index * noteLength);
+                    musicGain.gain.setValueAtTime(0.0, time + (index + 0.8) * noteLength);
+                });
+                time += frequencies.length * noteLength;
+            }
+
+            musicGain.connect(musicContext.destination);
+            musicOsc.start();
+            musicOsc.stop(musicDuration);
+
+            this.sounds.background = await musicContext.startRendering();
+
+            statusElement.textContent = '¡Recursos generados!';
+            statusElement.style.display = 'none';
+        } catch (error) {
+            console.error('Error cargando recursos:', error);
+            statusElement.textContent = 'Error generando recursos. Por favor, recarga la página.';
+            throw error;
+        }
+    }
+
+    static playSound(name) {
+        if (this.sounds[name]) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createBufferSource();
+            source.buffer = this.sounds[name];
+            source.connect(audioContext.destination);
+            source.start();
+        }
+    }
+}
+
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.canvas.width = 800;
+        this.canvas.height = 600;
+        
+        // Posiciones de las capas del fondo
+        this.backgroundX1 = 0;
+        this.backgroundX2 = 0;
+        this.backgroundSpeed1 = 0.5;   // Velocidad de las estrellas lejanas
+        this.backgroundSpeed2 = 1;   // Velocidad de las estrellas cercanas
+        
+        this.init();
+    }
+
+    async init() {
+        await Resources.load();
+        
+        this.player = new Player(50, this.canvas.height / 2);
+        this.bullets = [];
+        this.enemies = [];
+        this.score = 0;
+        this.lives = 3;
+        this.gameOver = false;
+        
+        this.keys = {};
+        this.setupEventListeners();
+        
+        // Reproducir música de fondo
+        this.playBackgroundMusic();
+        
+        // Generar enemigos cada 2 segundos
+        this.enemyInterval = setInterval(() => this.spawnEnemy(), 2000);
+        
+        // Iniciar el bucle del juego
+        this.gameLoop();
+    }
+
+    playBackgroundMusic() {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createBufferSource();
+        source.buffer = Resources.sounds.background;
+        source.connect(audioContext.destination);
+        source.loop = true;
+        source.start();
+        this.backgroundMusic = source;
+    }
+
+    setupEventListeners() {
+        window.addEventListener('keydown', (e) => this.keys[e.key] = true);
+        window.addEventListener('keyup', (e) => this.keys[e.key] = false);
+        window.addEventListener('keypress', (e) => {
+            if (e.key === ' ' && !this.gameOver) {
+                this.bullets.push(new Bullet(
+                    this.player.x + 30,
+                    this.player.y + 15
+                ));
+                Resources.playSound('shoot');
+            }
+        });
+    }
+
+    spawnEnemy() {
+        if (this.gameOver) return;
+        
+        const y = Math.random() * (this.canvas.height - 40);
+        const type = Math.floor(Math.random() * 3) + 1;
+        this.enemies.push(new Enemy(this.canvas.width, y, type));
+    }
+
+    update() {
+        if (this.gameOver) return;
+
+        // Actualizar jugador
+        if (this.keys['ArrowUp']) this.player.y -= 5;
+        if (this.keys['ArrowDown']) this.player.y += 5;
+        if (this.keys['ArrowLeft']) this.player.x -= 5;
+        if (this.keys['ArrowRight']) this.player.x += 5;
+
+        // Mantener al jugador dentro del canvas
+        this.player.y = Math.max(0, Math.min(this.canvas.height - 30, this.player.y));
+        this.player.x = Math.max(0, Math.min(this.canvas.width - 30, this.player.x));
+
+        // Actualizar balas
+        this.bullets = this.bullets.filter(bullet => {
+            bullet.update();
+            return bullet.x < this.canvas.width;
+        });
+
+        // Actualizar enemigos
+        this.enemies = this.enemies.filter(enemy => {
+            enemy.update();
+            return enemy.x > 0;
+        });
+
+        // Detectar colisiones
+        this.detectCollisions();
+    }
+
+    detectCollisions() {
+        for (let enemy of this.enemies) {
+            // Colisión con balas
+            for (let bullet of this.bullets) {
+                if (this.checkCollision(bullet, enemy)) {
+                    enemy.health--;
+                    bullet.isDestroyed = true;
+                    
+                    if (enemy.health <= 0) {
+                        enemy.isDestroyed = true;
+                        this.score += enemy.points;
+                        document.getElementById('score').textContent = this.score;
+                        Resources.playSound('explosion');
+                    }
+                }
+            }
+
+            // Colisión con jugador
+            if (this.checkCollision(this.player, enemy)) {
+                enemy.isDestroyed = true;
+                this.lives--;
+                document.getElementById('lives').textContent = this.lives;
+                Resources.playSound('explosion');
+
+                if (this.lives <= 0) {
+                    this.gameOver = true;
+                    Resources.playSound('gameOver');
+                    if (this.backgroundMusic) {
+                        this.backgroundMusic.stop();
+                    }
+                    clearInterval(this.enemyInterval);
+                    this.showGameOver();
+                }
+            }
+        }
+
+        this.bullets = this.bullets.filter(bullet => !bullet.isDestroyed);
+        this.enemies = this.enemies.filter(enemy => !enemy.isDestroyed);
+    }
+
+    checkCollision(rect1, rect2) {
+        // Reducir el área de colisión para mayor precisión
+        const margin = 5;
+        return (rect1.x + margin) < (rect2.x + rect2.width - margin) &&
+               (rect1.x + rect1.width - margin) > (rect2.x + margin) &&
+               (rect1.y + margin) < (rect2.y + rect2.height - margin) &&
+               (rect1.y + rect1.height - margin) > (rect2.y + margin);
+    }
+
+    draw() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Fondo base
+        this.ctx.fillStyle = '#000033';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Actualizar posiciones de las capas (movimiento hacia la derecha)
+        this.backgroundX1 = (this.backgroundX1 + this.backgroundSpeed1);
+        if (this.backgroundX1 >= 3200) this.backgroundX1 = 0;
+        
+        this.backgroundX2 = (this.backgroundX2 + this.backgroundSpeed2);
+        if (this.backgroundX2 >= 3200) this.backgroundX2 = 0;
+        
+        // Dibujar capa lejana (más lenta)
+        this.ctx.drawImage(
+            Resources.images.backgroundLayer,
+            this.backgroundX1, 0, 3200, 600,
+            0, 0, this.canvas.width, this.canvas.height
+        );
+        // Dibujar la segunda parte para continuidad
+        this.ctx.drawImage(
+            Resources.images.backgroundLayer,
+            this.backgroundX1 - 3200, 0, 3200, 600,
+            0, 0, this.canvas.width, this.canvas.height
+        );
+        
+        // Dibujar capa cercana (más rápida)
+        this.ctx.drawImage(
+            Resources.images.foregroundLayer,
+            this.backgroundX2, 0, 3200, 600,
+            0, 0, this.canvas.width, this.canvas.height
+        );
+        // Dibujar la segunda parte para continuidad
+        this.ctx.drawImage(
+            Resources.images.foregroundLayer,
+            this.backgroundX2 - 3200, 0, 3200, 600,
+            0, 0, this.canvas.width, this.canvas.height
+        );
+        
+        // Dibujar jugador
+        if (!this.gameOver) {
+            this.ctx.drawImage(Resources.images.player, this.player.x, this.player.y, this.player.width, this.player.height);
+        }
+
+        // Dibujar balas
+        this.bullets.forEach(bullet => {
+            this.ctx.drawImage(Resources.images.bullet, bullet.x, bullet.y, bullet.width, bullet.height);
+        });
+
+        // Dibujar enemigos
+        this.enemies.forEach(enemy => {
+            const enemyImage = Resources.images[`enemy${enemy.type}`];
+            if (enemyImage) {
+                this.ctx.drawImage(enemyImage, enemy.x, enemy.y, enemy.width, enemy.height);
+            }
+        });
+
+        // Mostrar Game Over
+        if (this.gameOver) {
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.font = '48px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('GAME OVER', this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.font = '24px Arial';
+            this.ctx.fillText(`Puntuación final: ${this.score}`, this.canvas.width / 2, this.canvas.height / 2 + 50);
+            this.ctx.fillText('Presiona F5 para reiniciar', this.canvas.width / 2, this.canvas.height / 2 + 100);
+        }
+    }
+
+    gameLoop() {
+        this.update();
+        this.draw();
+        requestAnimationFrame(() => this.gameLoop());
+    }
+
+    showGameOver() {
+        const gameOverScreen = document.createElement('div');
+        gameOverScreen.style.position = 'absolute';
+        gameOverScreen.style.top = '50%';
+        gameOverScreen.style.left = '50%';
+        gameOverScreen.style.transform = 'translate(-50%, -50%)';
+        gameOverScreen.style.textAlign = 'center';
+        gameOverScreen.style.color = 'white';
+        gameOverScreen.style.fontSize = '24px';
+        gameOverScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        gameOverScreen.style.padding = '20px';
+        gameOverScreen.style.borderRadius = '10px';
+        gameOverScreen.innerHTML = `
+            <h2>GAME OVER</h2>
+            <p>Puntuación final: ${this.score}</p>
+            <button onclick="location.reload()" style="padding: 10px 20px; margin-top: 10px; font-size: 18px; cursor: pointer;">
+                Reiniciar Juego
+            </button>
+        `;
+        document.body.appendChild(gameOverScreen);
+    }
+}
+
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 50;
+        this.height = 30;
+    }
+}
+
+class Bullet {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 20;
+        this.height = 8;
+        this.speed = 7;
+    }
+
+    update() {
+        this.x += this.speed;
+    }
+}
+
+class Enemy {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.width = 40;
+        this.height = 40;
+        
+        // Configuración según el tipo
+        switch(type) {
+            case 1: // Enemigo básico
+                this.speed = 3;
+                this.health = 1;
+                this.points = 100;
+                break;
+            case 2: // Enemigo medio
+                this.speed = 4;
+                this.health = 2;
+                this.points = 200;
+                break;
+            case 3: // Enemigo fuerte
+                this.speed = 2;
+                this.health = 3;
+                this.points = 300;
+                break;
+        }
+    }
+
+    update() {
+        this.x -= this.speed;
+    }
+}
+
+// Iniciar el juego cuando se cargue la página
+window.onload = async () => {
+    try {
+        const game = new Game();
+    } catch (error) {
+        console.error('Error al iniciar el juego:', error);
+        document.getElementById('resourceStatus').textContent = 'Error al iniciar el juego. Por favor, recarga la página.';
+    }
+}; 
