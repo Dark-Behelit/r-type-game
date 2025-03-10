@@ -1,0 +1,91 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #000;
+}
+
+.game-container {
+    position: relative;
+}
+
+canvas {
+    border: 2px solid #333;
+    background-color: #000;
+}
+
+.game-info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    font-size: 20px;
+    display: flex;
+    gap: 20px;
+}
+
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-family: Arial, sans-serif;
+    font-size: 24px;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 20px;
+    border-radius: 10px;
+}
+
+.lives {
+    color: #ff0;
+}
+
+/* Estilos para la tabla de puntuaciones altas */
+.high-scores-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    color: #fff;
+    font-family: Arial, sans-serif;
+}
+
+.high-scores-table th, 
+.high-scores-table td {
+    padding: 8px;
+    text-align: center;
+    border-bottom: 1px solid #444;
+}
+
+.high-scores-table th {
+    background-color: rgba(0, 0, 0, 0.5);
+    color: #ff0;
+    font-weight: bold;
+}
+
+.high-scores-table tr:nth-child(even) {
+    background-color: rgba(50, 50, 50, 0.3);
+}
+
+.high-scores-table tr:hover {
+    background-color: rgba(100, 100, 100, 0.3);
+}
+
+/* Estilos para los botones */
+button {
+    transition: all 0.3s ease;
+}
+
+button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 10px rgba(76, 175, 80, 0.7);
+}
+
+button:active {
+    transform: scale(0.95);
+} 
